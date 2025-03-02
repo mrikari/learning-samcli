@@ -1,0 +1,11 @@
+# Ignore localstack volume directory
+volume/
+# Ignore temporary files
+*.tmp
+*.log
+# Ignore node_modules
+node_modules/
+# Ignore Dockerfile
+Dockerfile
+# Ignore docker-compose file
+docker-compose.yml
