@@ -1,0 +1,6 @@
+pytest
+boto3
+boto3-stubs[essential]
+botocore-stubs[essential]
+moto
+requests
