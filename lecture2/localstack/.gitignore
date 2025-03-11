@@ -1,7 +1,0 @@
-# Localstack specific files
-.localstack/
-.localstack_tmp/
-localstack/
-localstack_tmp/
-
-volume
