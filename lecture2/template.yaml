@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  lecture2
+
+  Sample SAM Template for lecture2
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  SampleGetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/sample/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /echo
+            Method: get
+  SamplePostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/sample/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /echo
+            Method: post
+  SamplePathParamFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/pathparam/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /echo/message={message}
+            Method: get
+  SampleQueryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/work/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Events:
+        Request:
+          Type: Api
+          Properties:
+            Path: /users
+            Method: get
