@@ -20,16 +20,48 @@ Parameters:
     Description: DynamoDB table name for the Keywords
 
 Resources:
-  KeywordStore:
-    Type: AWS::Serverless::SimpleTable
+  GetValidateFunction:
+    Type: AWS::Serverless::Function
     Properties:
-      TableName: keyword-store
-      PrimaryKey:
-        Name: id
-        Type: String
-      ProvisionedThroughput:
-        ReadCapacityUnits: 1
-        WriteCapacityUnits: 1
+      CodeUri: work/GetValidation/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Events:
+        SetKeyword:
+          Type: Api
+          Properties:
+            Path: /work
+            Method: get
+  PutValidateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: work/PutValidation/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Events:
+        SetKeyword:
+          Type: Api
+          Properties:
+            Path: /work
+            Method: put
+  DeleteValidateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: work/DeleteValidation/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Events:
+        SetKeyword:
+          Type: Api
+          Properties:
+            Path: /work
+            Method: delete
   StoreFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
