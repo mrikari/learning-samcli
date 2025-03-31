@@ -1,240 +1,41 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  Todo Management Service
+  lecture4
 
-  This SAM template defines a serverless application for managing Todo items,
-  including creating, retrieving, updating, and deleting Todo items.
+  Sample SAM Template for lecture4
 
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 3
 
-Parameters:
-  TableName:
-    Type: String
-    Default: convert-status-table
-  EndpointUrl:
-    Type: String
-    Default: ""
-
 Resources:
-  RequirementsLayer:
-    Type: AWS::Serverless::LayerVersion
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      LayerName: RequirementsLayer
-      Description: Layer for Python requirements
-      ContentUri: todo/CommonLayer
-      CompatibleRuntimes:
-        - python3.13
-    Metadata:
-      BuildMethod: python3.13
-
-  TodoApi:
-    Type: AWS::Serverless::Api
-    Properties:
-      Name: TodoApi
-      StageName: Prod
-      ApiKeySourceType: HEADER
-      Auth:
-        ApiKeyRequired: true
-        UsagePlan:
-          CreateUsagePlan: PER_API
-          Quota:
-            Limit: 5000
-            Period: MONTH
-          Throttle:
-            BurstLimit: 200
-            RateLimit: 100
-
-  TodoListFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: todo/ListTodos
+      CodeUri: hello_world/
       Handler: app.lambda_handler
       Runtime: python3.13
-      FunctionName: ListTodos
       Architectures:
         - x86_64
-      Layers:
-        - !Ref RequirementsLayer
-      Environment:
-        Variables:
-          ENDPOINT_URL: !Ref EndpointUrl
-          STATUS_TABLE: !Ref TableName
       Events:
-        ListTodo:
-          Type: Api
+        HelloWorld:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
-            Path: /todos
+            Path: /hello
             Method: get
-            RestApiId: !Ref TodoApi
-            Auth:
-              ApiKeyRequired: true
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref TableName
-
-  TodoGetFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: todo/GetTodo
-      Handler: app.lambda_handler
-      Runtime: python3.13
-      FunctionName: GetTodo
-      Architectures:
-        - x86_64
-      Layers:
-        - !Ref RequirementsLayer
-      Environment:
-        Variables:
-          ENDPOINT_URL: !Ref EndpointUrl
-          STATUS_TABLE: !Ref TableName
-      Events:
-        GetTodo:
-          Type: Api
-          Properties:
-            Path: /todos/{id}
-            Method: get
-            RestApiId: !Ref TodoApi
-            Auth:
-              ApiKeyRequired: true
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref TableName
-
-  TodoCreateFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: todo/CreateTodo
-      Handler: app.lambda_handler
-      Runtime: python3.13
-      FunctionName: CreateTodo
-      Architectures:
-        - x86_64
-      Layers:
-        - !Ref RequirementsLayer
-      Environment:
-        Variables:
-          ENDPOINT_URL: !Ref EndpointUrl
-          STATUS_TABLE: !Ref TableName
-      Events:
-        CreateTodo:
-          Type: Api
-          Properties:
-            Path: /todos
-            Method: put
-            RestApiId: !Ref TodoApi
-            Auth:
-              ApiKeyRequired: true
-        CreateTodoPost:
-          Type: Api
-          Properties:
-            Path: /todos
-            Method: post
-            RestApiId: !Ref TodoApi
-            Auth:
-              ApiKeyRequired: true
-      Policies:
-        - DynamoDBWritePolicy:
-            TableName: !Ref TableName
-
-  TodoDeleteFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: todo/DeleteTodo
-      Handler: app.lambda_handler
-      Runtime: python3.13
-      FunctionName: DeleteTodo
-      Architectures:
-        - x86_64
-      Layers:
-        - !Ref RequirementsLayer
-      Environment:
-        Variables:
-          ENDPOINT_URL: !Ref EndpointUrl
-          STATUS_TABLE: !Ref TableName
-      Events:
-        DeleteTodo:
-          Type: Api
-          Properties:
-            Path: /todos/{id}
-            Method: delete
-            RestApiId: !Ref TodoApi
-            Auth:
-              ApiKeyRequired: true
-      Policies:
-        - DynamoDBWritePolicy:
-            TableName: !Ref TableName
-
-  TodoUpdateFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      CodeUri: todo/UpdateTodo
-      Handler: app.lambda_handler
-      Runtime: python3.13
-      FunctionName: UpdateTodo
-      Architectures:
-        - x86_64
-      Layers:
-        - !Ref RequirementsLayer
-      Environment:
-        Variables:
-          ENDPOINT_URL: !Ref EndpointUrl
-          STATUS_TABLE: !Ref TableName
-      Events:
-        UpdateTodoPatch:
-          Type: Api
-          Properties:
-            Path: /todos/{id}
-            Method: patch
-            RestApiId: !Ref TodoApi
-            Auth:
-              ApiKeyRequired: true
-        UpdateTodoPut:
-          Type: Api
-          Properties:
-            Path: /todos/{id}
-            Method: put
-            RestApiId: !Ref TodoApi
-            Auth:
-              ApiKeyRequired: true
-        UpdateTodoPost:
-          Type: Api
-          Properties:
-            Path: /todos/{id}
-            Method: post
-            RestApiId: !Ref TodoApi
-            Auth:
-              ApiKeyRequired: true
-      Policies:
-        - DynamoDBWritePolicy:
-            TableName: !Ref TableName
-
-  StatusTable:
-    Type: AWS::Serverless::SimpleTable
-    Properties:
-      PrimaryKey:
-        Name: id
-        Type: String
-      ProvisionedThroughput:
-        ReadCapacityUnits: 1
-        WriteCapacityUnits: 1
-      TableName: !Ref TableName
 
 Outputs:
-  ListTodosApi:
-    Description: "API Gateway endpoint URL for ListTodos function"
-    Value: !Sub "https://${TodoApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/"
-  GetTodoApi:
-    Description: "API Gateway endpoint URL for GetTodo function"
-    Value: !Sub "https://${TodoApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/{id}"
-  CreateTodoApi:
-    Description: "API Gateway endpoint URL for CreateTodo function"
-    Value: !Sub "https://${TodoApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/"
-  DeleteTodoApi:
-    Description: "API Gateway endpoint URL for DeleteTodo function"
-    Value: !Sub "https://${TodoApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/{id}"
-  UpdateTodoApi:
-    Description: "API Gateway endpoint URL for UpdateTodo function"
-    Value: !Sub "https://${TodoApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/todos/{id}"
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  HelloWorldApi:
+    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+  HelloWorldFunction:
+    Description: "Hello World Lambda Function ARN"
+    Value: !GetAtt HelloWorldFunction.Arn
+  HelloWorldFunctionIamRole:
+    Description: "Implicit IAM Role created for Hello World function"
+    Value: !GetAtt HelloWorldFunctionRole.Arn

@@ -3,7 +3,7 @@
 version = 0.1
 
 [default.global.parameters]
-stack_name = "lecture4"
+stack_name = "lecture2"
 
 [default.build.parameters]
 cached = true
@@ -28,3 +28,23 @@ warm_containers = "EAGER"
 
 [default.local_start_lambda.parameters]
 warm_containers = "EAGER"
+
+[dev.deploy.parameters]
+stack_name = "lecture2"
+resolve_s3 = true
+s3_prefix = "lecture2"
+region = "ap-northeast-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "TableName=\"convert-status-table\" EndpointUrl=\"\""
+image_repositories = []
+
+[prod.deploy.parameters]
+stack_name = "lecture2"
+resolve_s3 = true
+s3_prefix = "lecture2"
+region = "ap-northeast-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "TableName=\"convert-status-table\" EndpointUrl=\"\""
+image_repositories = []
