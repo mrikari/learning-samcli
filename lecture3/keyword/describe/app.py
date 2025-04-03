@@ -20,7 +20,7 @@ table = dynamodb.Table(table_name)
 
 def lambda_handler(event, context):
     # Scan the table
-    response = table.scan()
+    response = table.scan(Limit=10)
     items = response['Items'] if 'Items' in response else []
     return {
         "statusCode": 200,
