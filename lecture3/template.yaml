@@ -20,9 +20,21 @@ Parameters:
     Description: DynamoDB table name for the Keywords
 
 Resources:
+  RequirementsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: RequirementsLayer
+      Description: Layer for Python requirements
+      ContentUri: work/CommonLayer
+      CompatibleRuntimes:
+        - python3.13
+    Metadata:
+      BuildMethod: python3.13
   GetValidateFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Layers:
+        - !Ref RequirementsLayer
       CodeUri: work/GetValidation/
       Handler: app.lambda_handler
       Runtime: python3.13
@@ -37,6 +49,8 @@ Resources:
   PutValidateFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Layers:
+        - !Ref RequirementsLayer
       CodeUri: work/PutValidation/
       Handler: app.lambda_handler
       Runtime: python3.13
@@ -51,6 +65,8 @@ Resources:
   DeleteValidateFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Layers:
+        - !Ref RequirementsLayer
       CodeUri: work/DeleteValidation/
       Handler: app.lambda_handler
       Runtime: python3.13
@@ -105,4 +121,26 @@ Resources:
           Type: Api
           Properties:
             Path: /keyword
+            Method: get
+  GetKeywordByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: keyword/get/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+          TABLE_NAME: keyword-store
+          ENDPOINT_URL: http://host.docker.internal:4566
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: keyword-store
+      Events:
+        GetKeyword:
+          Type: Api
+          Properties:
+            Path: /keyword/{id}
             Method: get
