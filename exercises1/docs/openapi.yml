@@ -1,0 +1,225 @@
+openapi: 3.0.3
+security: []
+info:
+  title: "TODOリストAPI"
+  version: "1.0.0"
+  description: "このAPIは、TODOリストの作成・取得・更新・削除（CRUD）を提供します。\n各TODOには複数のタグを付与することができ、ユーザー単位で管理されます。"
+  license:
+    name: "MIT"
+    url: "https://opensource.org/licenses/MIT"
+
+servers:
+  - url: "https://todo-api.yourdomain.com"
+
+paths:
+  /todos:
+    get:
+      tags: ["TODO"]
+      summary: "TODO一覧取得"
+      operationId: "getTodos"
+      description: "登録されているすべてのTODOを取得します。"
+      responses:
+        '200':
+          description: "TODOリストを正常に取得しました"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Todo"
+        '400':
+          description: "不正なリクエストです"
+    post:
+      tags: ["TODO"]
+      summary: "TODO作成"
+      operationId: "createTodo"
+      description: "新しいTODOを作成します。"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TodoCreate"
+      responses:
+        '201':
+          description: "TODOが作成されました"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Todo"
+        '400':
+          description: "リクエストが不正です"
+
+  /todos/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+        description: "取得・更新・削除対象のTODOのUUID"
+    get:
+      tags: ["TODO"]
+      summary: "TODO詳細取得"
+      operationId: "getTodoById"
+      description: "指定したUUIDのTODOを取得します。"
+      responses:
+        '200':
+          description: "TODOを正常に取得しました"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Todo"
+        '404':
+          description: "指定されたTODOが見つかりません"
+    put:
+      tags: ["TODO"]
+      summary: "TODO更新"
+      operationId: "updateTodoById"
+      description: "指定したUUIDのTODOを更新します。"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TodoUpdate"
+      responses:
+        '200':
+          description: "TODOが正常に更新されました"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Todo"
+        '400':
+          description: "リクエストが不正です"
+        '404':
+          description: "指定されたTODOが見つかりません"
+    delete:
+      tags: ["TODO"]
+      summary: "TODO削除"
+      operationId: "deleteTodoById"
+      description: "指定したUUIDのTODOを削除します。"
+      responses:
+        '204':
+          description: "TODOが正常に削除されました"
+        '404':
+          description: "指定されたTODOが見つかりません"
+
+components:
+  schemas:
+    Todo:
+      type: object
+      description: "TODOの情報を表します"
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "TODOの一意なUUID"
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        title:
+          type: string
+          description: "TODOのタイトル"
+          minLength: 1
+          maxLength: 100
+          example: "買い物に行く"
+        description:
+          type: string
+          description: "詳細な説明（省略可能）"
+          maxLength: 500
+          example: "牛乳と卵を忘れずに"
+        due_date:
+          type: string
+          format: date
+          description: "期限の日付（YYYY-MM-DD）"
+          example: "2025-04-10"
+        is_completed:
+          type: boolean
+          description: "完了フラグ（true: 完了, false: 未完了）"
+          example: false
+        priority:
+          type: string
+          description: "優先度（low: 低, medium: 中, high: 高）"
+          enum: [low, medium, high]
+          example: medium
+        tags:
+          type: array
+          description: "タグ一覧（最大10個まで）"
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 20
+            example: "買い物"
+      required: [id, title, is_completed]
+
+    TodoCreate:
+      type: object
+      description: "新規作成用のTODOデータ"
+      properties:
+        title:
+          type: string
+          description: "TODOのタイトル（必須）"
+          minLength: 1
+          maxLength: 100
+          example: "掃除をする"
+        description:
+          type: string
+          description: "TODOの説明（任意）"
+          maxLength: 500
+          example: "部屋とリビングを掃除"
+        due_date:
+          type: string
+          format: date
+          description: "TODOの期限（YYYY-MM-DD、任意）"
+          example: "2025-04-10"
+        priority:
+          type: string
+          description: "優先度（任意）"
+          enum: [low, medium, high]
+          default: medium
+          example: high
+        tags:
+          type: array
+          description: "タグ一覧（任意、最大10個）"
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 20
+            example: "家事"
+      required: [title]
+
+    TodoUpdate:
+      type: object
+      description: "TODO更新用のデータ"
+      properties:
+        title:
+          type: string
+          description: "タイトル（任意）"
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          description: "説明（任意）"
+          maxLength: 500
+        due_date:
+          type: string
+          format: date
+          description: "期限（任意）"
+        is_completed:
+          type: boolean
+          description: "完了フラグ（任意）"
+        priority:
+          type: string
+          description: "優先度（任意）"
+          enum: [low, medium, high]
+        tags:
+          type: array
+          description: "タグ一覧（任意、最大10個）"
+          maxItems: 10
+          items:
+            type: string
+            maxLength: 20
+
+tags:
+  - name: "TODO"
+    description: "TODOに関する基本的な操作（取得・作成・更新・削除）"

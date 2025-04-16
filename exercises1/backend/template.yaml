@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  backend
+
+  Sample SAM Template for backend
+
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  RequirementsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: RequirementsLayer
+      Description: Layer for Python requirements
+      ContentUri: todo_service/CommonLayer
+      CompatibleRuntimes:
+        - python3.13
+    Metadata:
+      BuildMethod: python3.13
+
+  TodoApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: TodoApi
+      StageName: Prod
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+
+  TodoListFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: todo_service/ListTodos
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: ListTodos
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref RequirementsLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: "exercises1-table"
+      Events:
+        ListTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos
+            Method: get
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: "exercises1-table"
+
+  TodoGetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: todo_service/GetTodo
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: GetTodo
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref RequirementsLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: "exercises1-table"
+      Events:
+        GetTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos/{id}
+            Method: get
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: "exercises1-table"
+
+  TodoCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: todo_service/CreateTodo
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: CreateTodo
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref RequirementsLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: "exercises1-table"
+      Events:
+        CreateTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos
+            Method: post
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: "exercises1-table"
+
+  TodoDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: todo_service/DeleteTodo
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: DeleteTodo
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref RequirementsLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: "exercises1-table"
+      Events:
+        DeleteTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos/{id}
+            Method: delete
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: "exercises1-table"
+
+  TodoUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: todo_service/UpdateTodo
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: UpdateTodo
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref RequirementsLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: "exercises1-table"
+      Events:
+        UpdateTodo:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TodoApi
+            Path: /todos/{id}
+            Method: put
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: "exercises1-table"
+
+  TodoTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: String
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      TableName: "exercises1-table"
+
+Outputs:
+  TodoApi:
+    Description: "API Gateway endpoint URL for Prod stage for Todo API"
+    Value: !Sub "https://${TodoApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
