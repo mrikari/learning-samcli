@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  protected-service
+
+  Sample SAM Template for protected-service
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 128
+Resources:
+  RequirementsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: RequirementsLayer
+      Description: Layer for Python requirements
+      ContentUri: protected/CommonLayer
+      CompatibleRuntimes:
+        - python3.13
+    Metadata:
+      BuildMethod: python3.13
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ProtectedUserPool
+      AutoVerifiedAttributes:
+        - email
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: admin
+      UserPoolId: !Ref CognitoUserPool
+      Description: Admin users
+  UserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: user
+      UserPoolId: !Ref CognitoUserPool
+      Description: Regular users
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ProtectedUserPoolClient
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH # AWSCLIから使うならこれ（基本は使わない）
+        - ALLOW_USER_SRP_AUTH # AWS SDK 等で利用
+        - ALLOW_REFRESH_TOKEN_AUTH # 再認証やセッション継続に利用、ログインには利用しない
+  ProtectedApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: ProtectedApi
+      StageName: Prod
+      Cors:
+        AllowMethods: "'OPTIONS,GET,POST'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt CognitoUserPool.Arn
+            Identity:
+              Header: Authorization
+  AdminFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: protected/CheckProtect/
+      Handler: app.admin_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref RequirementsLayer
+      Events:
+        getAdminCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /protected/admin
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
+  GeneralFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: protected/CheckProtect/
+      Handler: app.general_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref RequirementsLayer
+      Events:
+        getGeneralCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /protected/general
+            Method: get
+            Auth:
+              Authorizer: CognitoAuthorizer
