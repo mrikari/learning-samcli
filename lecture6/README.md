@@ -49,7 +49,7 @@ aws cognito-idp initiate-auth \
 aws cognito-idp respond-to-auth-challenge \
   --client-id <CLIENT-ID> \
   --challenge-name NEW_PASSWORD_REQUIRED \
-  --challenge-responses "USERNAME=<USERNAME>,PASSWORD=<PASSWORD>" \
+  --challenge-responses "USERNAME=<USERNAME>,NEW_PASSWORD=<PASSWORD>" \
   --session "<SESSION-STRING>"
 ```
 
