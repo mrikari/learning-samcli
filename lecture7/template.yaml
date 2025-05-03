@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  lecture7
+
+  Sample SAM Template for lecture7
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  # 巨大になってきたらAWS::Serverless::Applicationで分割する
+  PreTokenGenerationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PreTokenGenerationFunction
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      CodeUri: services/Cognito/PreTokenGeneration/
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+  PreTokenInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PreTokenGenerationFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPool}
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ProtectedUserPool
+      LambdaConfig:
+        PreTokenGeneration: !GetAtt PreTokenGenerationFunction.Arn
+      AutoVerifiedAttributes:
+        - email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: admin_only
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Schema:
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MinLength: "36"
+            MaxLength: "36"
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ProtectedAppClient
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+  RoleAccessTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: RoleAccessTable
+      PrimaryKey:
+        Name: role_id
+        Type: String
+  ProtectedApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: ProtectedApi
+      StageName: prod
+      Auth:
+        Authorizers:
+          MyLambdaRequestAuth:
+            FunctionArn: !GetAtt LambdaTokenAuthorizer.Arn
+        DefaultAuthorizer: MyLambdaRequestAuth
+  LambdaTokenAuthorizer:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: LambdaTokenAuthorizer
+      CodeUri: services/Authorizer/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events: {}  # API Gateway 経由では呼ばれない
+  LambdaTokenAuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaTokenAuthorizer.Arn
+      Principal: apigateway.amazonaws.com
+  ListRolesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ListRolesFunction
+      CodeUri: services/RoleService/ListRoles/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        GetRoles:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /roles
+            Method: GET
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  CreateRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CreateRoleFunction
+      CodeUri: services/RoleService/CreateRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        CreateRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /roles
+            Method: POST
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        PutRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /roles
+            Method: PUT
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  UpdateRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: UpdateRoleFunction
+      CodeUri: services/RoleService/UpdateRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        UpdateRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /roles/{role_id}
+            Method: POST
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        PatchRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /roles/{role_id}
+            Method: PATCH
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  GetRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GetRoleFunction
+      CodeUri: services/RoleService/GetRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        GetRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /roles/{role_id}
+            Method: GET
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  DeleteRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: DeleteRoleFunction
+      CodeUri: services/RoleService/DeleteRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        DeleteRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ProtectedApi
+            Path: /roles/{role_id}
+            Method: DELETE
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+# Outputs:
