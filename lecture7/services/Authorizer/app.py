@@ -8,6 +8,7 @@ dynamodb = boto3.resource("dynamodb")
 role_table = dynamodb.Table(os.environ["ROLE_TABLE_NAME"])
 cognito_user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
 
+
 def lambda_handler(event, context):
     print("[Authorizer] Event:", json.dumps(event))
 
@@ -16,6 +17,7 @@ def lambda_handler(event, context):
 
     try:
         claims = jwt.decode(token, options={"verify_signature": False})
+        username = claims.get("username")
         role_id = claims.get("custom:role")
         principal_id = claims.get("sub")
     except InvalidTokenError:
@@ -31,12 +33,24 @@ def lambda_handler(event, context):
 
     if is_super_user:
         print(f"[Authorizer] Super user: {principal_id}")
-        return generate_allow(principal_id, [get_method_arn_prefix(method_arn) + "/*/*"])
+        return generate_allow(
+            principal_id,
+            [get_method_arn_prefix(method_arn) + "/*/*"],
+            context={
+                "username": username,
+            },
+        )
 
     allowed_ops = role_data.get("allowed_operations", [])
     allowed_arns = expand_allowed_operations(allowed_ops, method_arn)
 
-    return generate_allow(principal_id, allowed_arns)
+    return generate_allow(
+        principal_id,
+        allowed_arns,
+        context={
+            "username": username,
+        },
+    )
 
 
 def fetch_role_data(role_id: str):
@@ -69,24 +83,31 @@ def get_method_arn_prefix(method_arn: str) -> str:
     return "/".join(method_arn.split("/")[:2])
 
 
-def generate_allow(principal_id, resources):
-    return generate_policy(principal_id, "Allow", resources)
+def generate_allow(principal_id, resources, context=None):
+    return generate_policy(principal_id, "Allow", resources, context)
 
 
 def generate_deny(principal_id, method_arn):
     return generate_policy(principal_id, "Deny", [method_arn])
 
 
-def generate_policy(principal_id, effect, resources):
+def generate_policy(principal_id, effect, resources, context=None):
     print(f"[Authorizer] Generating {effect} for resources: {resources}")
-    return {
+    policy = {
         "principalId": principal_id,
         "policyDocument": {
             "Version": "2012-10-17",
-            "Statement": [{
-                "Action": "execute-api:Invoke",
-                "Effect": effect,
-                "Resource": resources
-            }]
-        }
+            "Statement": [
+                {
+                    "Action": "execute-api:Invoke",
+                    "Effect": effect,
+                    "Resource": resources,
+                }
+            ],
+        },
     }
+
+    if context:
+        policy["context"] = context  # 👈 ここで埋め込む
+
+    return policy

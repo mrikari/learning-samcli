@@ -7,6 +7,7 @@ table = dynamodb.Table(os.environ["ROLE_TABLE_NAME"])
 def lambda_handler(event, context):
     user_attrs = event["request"]["userAttributes"]
     role_id = user_attrs.get("custom:role")
+    username = event["userName"]  # Cognitoのユーザー名（例: "user01"）
 
     if not role_id:
         raise Exception("Missing custom:role")
@@ -21,6 +22,7 @@ def lambda_handler(event, context):
     allowed_operations = role.get("allowed_operations", [])
 
     claims = {
+        "username": username,
         "role": role_id,
         "is_super_user": is_super_user
     }

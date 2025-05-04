@@ -107,6 +107,18 @@ Resources:
       Action: lambda:InvokeFunction
       FunctionName: !GetAtt LambdaTokenAuthorizer.Arn
       Principal: apigateway.amazonaws.com
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: CommonLayer
+      Description: Layer for Python requirements
+      ContentUri: layers/CommonLayer
+      CompatibleRuntimes:
+        - python3.13
+    Metadata:
+      BuildMethod: python3.13
+
+  ### RoleService ###
   ListRolesFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -233,4 +245,326 @@ Resources:
             Method: DELETE
             Auth:
               Authorizer: MyLambdaRequestAuth
+
+  ### UserService ###
+  ListUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ListUsersFunction
+      CodeUri: services/UserService/ListUsers/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        ListUsers:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /users
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  CreateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CreateUserFunction
+      CodeUri: services/UserService/CreateUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminCreateUser
+                - cognito-idp:AdminSetUserPassword
+                - cognito-idp:AdminUpdateUserAttributes
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        CreateUser:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /users
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        PutUser:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /users
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  GetUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GetUserFunction
+      CodeUri: services/UserService/GetUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        GetUser:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /users/{username}
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  UpdateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: UpdateUserFunction
+      CodeUri: services/UserService/UpdateUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminUpdateUserAttributes
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        UpdateUser:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /users/{username}
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        PatchUser:
+          Type: Api
+          Properties:
+            Method: PATCH
+            Path: /users/{username}
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  DeleteUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: DeleteUserFunction
+      CodeUri: services/UserService/DeleteUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminDeleteUser
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        DeleteUser:
+          Type: Api
+          Properties:
+            Method: DELETE
+            Path: /users/{username}
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+
+  ### TodoService ###
+  TodoListFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TodoService/ListTodos
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: ListTodos
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: !Ref TodoTable
+      Events:
+        ListTodo:
+          Type: Api
+          Properties:
+            Path: /todos
+            Method: get
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TodoTable
+  TodoCreateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TodoService/CreateTodo
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: CreateTodo
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: !Ref TodoTable
+      Events:
+        CreateTodo:
+          Type: Api
+          Properties:
+            Path: /todos
+            Method: put
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        CreateTodoPost:
+          Type: Api
+          Properties:
+            Path: /todos
+            Method: post
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodoTable
+  TodoGetFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TodoService/GetTodo
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: GetTodo
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: !Ref TodoTable
+      Events:
+        GetTodo:
+          Type: Api
+          Properties:
+            Path: /todos/{id}
+            Method: get
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TodoTable
+  TodoDeleteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TodoService/DeleteTodo
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: DeleteTodo
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: !Ref TodoTable
+      Events:
+        DeleteTodo:
+          Type: Api
+          Properties:
+            Path: /todos/{id}
+            Method: delete
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodoTable
+  TodoUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TodoService/UpdateTodo
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      FunctionName: UpdateTodo
+      Architectures:
+        - x86_64
+      Layers:
+        - !Ref CommonLayer
+      Environment:
+        Variables:
+          TODO_TABLE_NAME: !Ref TodoTable
+      Events:
+        UpdateTodoPatch:
+          Type: Api
+          Properties:
+            Path: /todos/{id}
+            Method: patch
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        UpdateTodoPut:
+          Type: Api
+          Properties:
+            Path: /todos/{id}
+            Method: put
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        UpdateTodoPost:
+          Type: Api
+          Properties:
+            Path: /todos/{id}
+            Method: post
+            RestApiId: !Ref ProtectedApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodoTable
+  TodoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: todo_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH  # Partition key
+        - AttributeName: todo_id
+          KeyType: RANGE # Sort key
+      Tags:
+        - Key: service
+          Value: todo
+
 # Outputs:
