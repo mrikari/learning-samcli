@@ -1,0 +1,474 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  lecture8
+
+  Sample SAM Template for lecture8
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Parameters:
+  TableName:
+    Type: String
+    Default: TroublesData
+
+Resources:
+  PreTokenGenerationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PreTokenGenerationFunction
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      CodeUri: services/Cognito/PreTokenGeneration/
+  PreTokenInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PreTokenGenerationFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPool}
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ProtectedUserPool
+      LambdaConfig:
+        PreTokenGeneration: !GetAtt PreTokenGenerationFunction.Arn
+      AutoVerifiedAttributes:
+        - email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: admin_only
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Schema:
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MinLength: "36"
+            MaxLength: "36"
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ProtectedAppClient
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+  RoleAccessTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: RoleAccessTable
+      PrimaryKey:
+        Name: role_id
+        Type: String
+  TroublesServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: TroublesServiceApi
+      StageName: prod
+      Auth:
+        Authorizers:
+          MyLambdaRequestAuth:
+            FunctionArn: !GetAtt LambdaTokenAuthorizer.Arn
+        DefaultAuthorizer: MyLambdaRequestAuth
+  LambdaTokenAuthorizer:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: LambdaTokenAuthorizer
+      CodeUri: services/Authorizer/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events: {} # API Gateway 経由では呼ばれない
+  LambdaTokenAuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaTokenAuthorizer.Arn
+      Principal: apigateway.amazonaws.com
+
+  ### RoleService ###
+  ListRolesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ListRolesFunction
+      CodeUri: services/RoleService/ListRoles/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        GetRoles:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles
+            Method: GET
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  CreateRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CreateRoleFunction
+      CodeUri: services/RoleService/CreateRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        CreateRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles
+            Method: POST
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        PutRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles
+            Method: PUT
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  UpdateRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: UpdateRoleFunction
+      CodeUri: services/RoleService/UpdateRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        UpdateRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles/{role_id}
+            Method: POST
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        PatchRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles/{role_id}
+            Method: PATCH
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  GetRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GetRoleFunction
+      CodeUri: services/RoleService/GetRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        GetRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles/{role_id}
+            Method: GET
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  DeleteRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: DeleteRoleFunction
+      CodeUri: services/RoleService/DeleteRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        DeleteRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles/{role_id}
+            Method: DELETE
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+
+  ### UserService ###
+  ListUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ListUsersFunction
+      CodeUri: services/UserService/ListUsers/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        ListUsers:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /users
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  CreateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CreateUserFunction
+      CodeUri: services/UserService/CreateUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminCreateUser
+                - cognito-idp:AdminSetUserPassword
+                - cognito-idp:AdminUpdateUserAttributes
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        CreateUser:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /users
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        PutUser:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /users
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  GetUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GetUserFunction
+      CodeUri: services/UserService/GetUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        GetUser:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /users/{username}
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  UpdateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: UpdateUserFunction
+      CodeUri: services/UserService/UpdateUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminUpdateUserAttributes
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        UpdateUser:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /users/{username}
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+        PatchUser:
+          Type: Api
+          Properties:
+            Method: PATCH
+            Path: /users/{username}
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+  DeleteUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: DeleteUserFunction
+      CodeUri: services/UserService/DeleteUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminDeleteUser
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        DeleteUser:
+          Type: Api
+          Properties:
+            Method: DELETE
+            Path: /users/{username}
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+
+
+  ListTroublesFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: services/TroubleService/ListTroubles
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Events:
+        ListTroubles:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /troubles
+            Method: get
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TableName
+  CreateTroubleFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: services/TroubleService/CreateTrouble
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Events:
+        ListTroubles:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /troubles
+            Method: post
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: MyLambdaRequestAuth
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+  TroubleTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: item_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH # Partition key
+        - AttributeName: item_id
+          KeyType: RANGE # Sort key
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: service
+          Value: troubles
+
+  HookCreateTrouble:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TroubleService/hooks/CreateTrouble
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TableName
+      Events:
+        DDBEvent:
+          Type: DynamoDB
+          Properties:
+            Stream: 
+              !GetAtt TroubleTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            Enabled: false
