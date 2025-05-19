@@ -5,7 +5,6 @@ Description: >
 
   Sample SAM Template for lecture8
 
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 3
@@ -13,7 +12,7 @@ Globals:
 Parameters:
   TableName:
     Type: String
-    Default: TroublesData
+    Default: TroubleTable
 
 Resources:
   PreTokenGenerationFunction:
@@ -379,56 +378,57 @@ Resources:
             Auth:
               Authorizer: MyLambdaRequestAuth
 
-
+  ### TroubleService ###
   ListTroublesFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function 
     Properties:
       CodeUri: services/TroubleService/ListTroubles
       Handler: app.lambda_handler
       Runtime: python3.13
       Architectures:
         - x86_64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
       Events:
         ListTroubles:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
             Path: /troubles
             Method: get
             RestApiId: !Ref TroublesServiceApi
             Auth:
               Authorizer: MyLambdaRequestAuth
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref TableName
   CreateTroubleFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function 
     Properties:
       CodeUri: services/TroubleService/CreateTrouble
       Handler: app.lambda_handler
       Runtime: python3.13
       Architectures:
         - x86_64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
       Events:
         ListTroubles:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
             Path: /troubles
             Method: post
             RestApiId: !Ref TroublesServiceApi
             Auth:
               Authorizer: MyLambdaRequestAuth
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref TableName
   TroubleTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: !Ref TableName
       BillingMode: PROVISIONED
       ProvisionedThroughput:
         ReadCapacityUnits: 1

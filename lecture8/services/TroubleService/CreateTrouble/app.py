@@ -1,7 +1,9 @@
 import json
 import boto3
+import os
+import uuid
 
-dynamoDB: DynamoDBServiceResource = boto3.resource("dynamodb")
+dynamoDB = boto3.resource("dynamodb")
 table = dynamoDB.Table(name=os.getenv("TABLE_NAME"))
 
 def generate_response(status_code, body):
@@ -17,13 +19,7 @@ def handle_exception(e):
     return generate_response(500, {"message": "サーバー内部エラー", "error": str(e)})
 
 def lambda_handler(event, context):
-    try:
-        body = json.loads(event.get('body', '{}'))
-        validate(event=body, schema=schema)
-    except SchemaValidationError as e:
-        return generate_response(400, {"message": "入力が無効です", "error": str(e)})
-    except Exception as e:
-        return handle_exception(e)
+    body = json.loads(event.get('body', '{}'))
 
     # 認証されたユーザーのID（Cognitoのsub）
     user_id = event["requestContext"]["authorizer"]["principalId"]
@@ -33,8 +29,8 @@ def lambda_handler(event, context):
     todo_item = {
         "user_id": user_id,
         "item_id": item_id,
-        "title": body.get("title"),
-        "description": body.get("description", ""),
+        "category": body.get("category", ""),
+        "message": body.get("message", ""),
     }
 
     try:
@@ -44,7 +40,7 @@ def lambda_handler(event, context):
 
     return generate_response(201, {
         "message": "アイテムが作成されました",
-        "item_id": todo_id.removeprefix("trouble#"),
-        "title": todo_item.get("title"),
-        "description": todo_item.get("description", ""),
+        "item_id": item_id.removeprefix("trouble#"),
+        "category": todo_item.get("category"),
+        "message": todo_item.get("message", ""),
     })

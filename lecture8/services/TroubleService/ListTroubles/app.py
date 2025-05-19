@@ -1,7 +1,8 @@
+import os
 import json
 import boto3
-
-dynamoDB: DynamoDBServiceResource = boto3.resource("dynamodb")
+from boto3.dynamodb.conditions import Key
+dynamoDB = boto3.resource("dynamodb")
 table = dynamoDB.Table(name=os.getenv("TABLE_NAME"))
 
 def generate_response(status_code, body):
@@ -20,11 +21,7 @@ def lambda_handler(event, context):
     query_params = event.get("queryStringParameters") or {}
     next_token = query_params.get("nextToken")
 
-    user_id = event["requestContext"]["authorizer"]["principalId"]
-
-    query_kwargs = {
-        "KeyConditionExpression": Key("user_id").eq(user_id)
-    }
+    query_kwargs = {}
 
     if next_token:
         try:
@@ -33,15 +30,15 @@ def lambda_handler(event, context):
             return generate_response(400, {"message": "Invalid nextToken", "error": str(e)})
 
     try:
-        response = table.query(**query_kwargs)
+        response = table.scan(**query_kwargs)
         items = response.get("Items", [])
         last_evaluated_key = response.get("LastEvaluatedKey")
 
         formatted_items = [
             {
                 "item_id": item.get("item_id").removeprefix("trouble#"),
-                "title": item.get("title"),
-                "description": item.get("description", ""),
+                "category": item.get("category", ""),
+                "message": item.get("message", ""),
             }
             for item in items
         ]
