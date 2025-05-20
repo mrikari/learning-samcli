@@ -460,15 +460,54 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref TableName
+          LOG_GROUP_NAME: !Ref CheckTroubleCountLogGroup
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref TableName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:DescribeLogStreams
+              Resource: "*"
       Events:
         DDBEvent:
           Type: DynamoDB
           Properties:
-            Stream: 
+            Stream:
               !GetAtt TroubleTable.StreamArn
             StartingPosition: TRIM_HORIZON
             BatchSize: 10
-            Enabled: false
+            Enabled: true
+
+  CheckTroubleCount:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TroubleService/hooks/CheckTroubleCount
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          LOG_GROUP_NAME: !Ref CheckTroubleCountLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:DescribeLogStreams
+                - logs:GetLogEvents
+              Resource: "*"
+      Events:
+        DailyTrigger:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 1 * * ? *)  # 1時間ごとに起動
+
+  CheckTroubleCountLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-CheckTroubleCount"
+      RetentionInDays: 30
