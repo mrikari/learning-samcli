@@ -11,10 +11,11 @@ cloudwatchlogs = boto3.client('logs')
 def lambda_handler(event, context):
 
     # ログストリームが存在しない場合は作成する
-    log_streams = cloudwatchlogs.describe_log_streams(
-        logGroupName=LOG_GROUP_NAME
-    )
     log_stream_name = f'CheckTroubleCount-{time.strftime("%Y-%m-%d-%H")}'
+    log_streams = cloudwatchlogs.describe_log_streams(
+        logGroupName=LOG_GROUP_NAME,
+        logStreamNamePrefix=log_stream_name,
+    )
     if len(log_streams['logStreams']) == 0:
         cloudwatchlogs.create_log_stream(
             logGroupName=LOG_GROUP_NAME,

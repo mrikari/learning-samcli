@@ -504,7 +504,7 @@ Resources:
         DailyTrigger:
           Type: Schedule
           Properties:
-            Schedule: cron(0 1 * * ? *)  # 1時間ごとに起動
+            Schedule: cron(0 * * * ? *)  # 1時間ごとに起動
 
   CheckTroubleCountLogGroup:
     Type: AWS::Logs::LogGroup
