@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Step Functions Callback with SNS Email Approval
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: python3.13
+
+Parameters:
+  Email:
+    Type: String
+    Description: 通知先メールアドレス
+
+Resources:
+
+  ### SNS Topic and Subscription ###
+  ApprovalTopic:
+    Type: AWS::SNS::Topic
+
+  ApprovalSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref ApprovalTopic
+      Protocol: email
+      Endpoint: !Ref Email
+
+  ### Lambda to Send SNS with Callback Token ###
+  SendSnsLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      FunctionName: SendSnsLambda
+      CodeUri: functions/send_sns/
+      Environment:
+        Variables:
+          TOPIC_ARN: !Ref ApprovalTopic
+          APPROVAL_API_BASE_URL: !Sub "https://${ApprovalApi}.execute-api.${AWS::Region}.amazonaws.com/Prod"
+      Policies:
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt ApprovalTopic.TopicName
+
+  ### API Gateway to Trigger Approval Callback Lambda ###
+  ApprovalApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'GET,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  ApprovalCallback:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      CodeUri: functions/callback/
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:SendTaskSuccess
+                - states:SendTaskFailure
+              Resource: "*"
+      Events:
+        Approve:
+          Type: Api
+          Properties:
+            Path: /approve
+            Method: get
+            RestApiId: !Ref ApprovalApi
+        Reject:
+          Type: Api
+          Properties:
+            Path: /reject
+            Method: get
+            RestApiId: !Ref ApprovalApi
+
+  ### IAM Role for Step Functions ###
+  StepFunctionsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AllowInvokeLambda
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: "*"
+
+  ### Step Function Definition ###
+  ApprovalStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachines/approval.asl.yaml
+      Role: !GetAtt StepFunctionsExecutionRole.Arn

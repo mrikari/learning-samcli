@@ -1,0 +1,39 @@
+StartAt: RequestApproval
+States:
+  RequestApproval:
+    Type: Task
+    Resource: arn:aws:states:::lambda:invoke.waitForTaskToken
+    TimeoutSeconds: 300
+    HeartbeatSeconds: 60
+    Parameters:
+      FunctionName: SendSnsLambda
+      Payload:
+        token.$: "$$.Task.Token"
+        requestId.$: "$.requestId"
+    Next: ApprovalResult
+
+  ApprovalResult:
+    Type: Choice
+    Choices:
+      - Variable: "$.approved"
+        BooleanEquals: true
+        Next: ApprovedTask
+      - Variable: "$.approved"
+        BooleanEquals: false
+        Next: RejectedTask
+    Default: UnknownOutcome
+
+  ApprovedTask:
+    Type: Pass
+    Result: "処理が承認されました"
+    End: true
+
+  RejectedTask:
+    Type: Pass
+    Result: "処理が却下されました"
+    End: true
+
+  UnknownOutcome:
+    Type: Fail
+    Error: InvalidCallback
+    Cause: approvedフィールドが未定義です
