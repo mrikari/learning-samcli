@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // SAMテンプレートからスタック名を取得
-const samConfigPath = path.resolve(__dirname, '../../infrastructure/samconfig.toml');
+const samConfigPath = path.resolve(__dirname, '../../backend/samconfig.toml');
 if (!fs.existsSync(samConfigPath)) {
   console.error('samconfig.toml not found');
   process.exit(1);

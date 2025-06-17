@@ -1,0 +1,28 @@
+service: 面倒ごと投稿API (TroubleService)
+type: api
+description: |
+  面倒ごと（Trouble）を新規登録・一覧表示するサービス。
+  ユーザーID、カテゴリ、投稿内容を記録し、GSIによってユーザー別抽出も可能。
+api:
+  endpoints:
+    - POST /troubles
+    - GET /troubles
+  auth_required: true
+authentication:
+  type: Cognito UserPool + Lambda Authorizer
+  usage: Authorization: Bearer <Cognito発行JWT>
+dynamodb:
+  table: Troubles
+  item_format:
+    PK: trouble_all
+    SK: createdAt#<timestamp>#<UUID>
+  gsis:
+    - name: GSI_UserTrouble
+      PK: user#<user_id>
+      SK: createdAt#<timestamp>#<UUID>
+dependencies:
+  - shared_resources.yaml#dynamodb_tables.Troubles
+  - shared_resources.yaml#secrets.COGNITO_USER_POOL_ID
+  - shared_resources.yaml#secrets.COGNITO_CLIENT_ID
+notes: |
+  Cognito UserPool + Lambda AuthorizerによるJWT認証必須。API Gateway + Lambda + DynamoDB構成。 

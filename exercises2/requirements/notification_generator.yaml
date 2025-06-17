@@ -1,0 +1,16 @@
+service: 通知生成Lambda
+type: stream_consumer
+description: |
+  コメント追加を検知し、対象Trouble投稿者へ通知レコードを生成する。
+trigger:
+  type: DynamoDB Stream
+  source_table: Comments
+  event: INSERT
+output_table: Notifications
+actions:
+  - コメント元Troubleの投稿者に通知(PENDING)をPutItem
+dependencies:
+  - shared_resources.yaml#dynamodb_tables.Comments
+  - shared_resources.yaml#dynamodb_tables.Notifications
+notes: |
+  通知はバッチで配信される。 

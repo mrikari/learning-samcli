@@ -1,0 +1,107 @@
+dynamodb_tables:
+  - name: Troubles
+    keys:
+      PK: trouble_all
+      SK: createdAt#<timestamp>#<UUID>
+    attributes:
+      - user_id: user#<sub>
+      - category: string
+      - message: string
+    gsis:
+      - name: GSI_UserTrouble
+        keys:
+          PK: user#<user_id>
+          SK: createdAt#<timestamp>#<UUID>
+
+  - name: Comments
+    keys:
+      PK: trouble#<trouble_id>
+      SK: createdAt#<timestamp>#<UUID>
+    stream_enabled: true
+    attributes:
+      - user_id: user#<sub>
+      - message: string
+
+  - name: Notifications
+    keys:
+      PK: notify#<UUID>
+      SK: user#<user_id>
+    attributes:
+      - status: PENDING | SENT
+      - message: string
+
+  - name: Stats
+    keys:
+      PK: metric#<type>
+      SK: <target_id>
+    attributes:
+      - count: number
+
+eventbridge_rules:
+  - name: PutItemEvent
+    source: dynamodb.amazonaws.com
+    detail_type: PutItem
+    targets:
+      - stats_aggregator
+
+secrets:
+  - name: JWT_SECRET
+    usage: JWTトークンの署名/検証キー
+  - name: WEBHOOK_URL
+    usage: 通知配信用WebhookまたはSlack
+
+monitoring:
+  - CloudWatch Logs for all Lambdas
+  - CloudWatch Metrics for EventBridge, DynamoDB Streams
+  - DynamoDB WCU/RCUとスロットリング状況を可視化
+
+sample_data:
+  Troubles:
+    - PK: trouble_all
+      SK: createdAt#2024-06-01T12:00:00Z#123e4567-e89b-12d3-a456-426614174000
+      user_id: user#user01
+      category: "掃除"
+      message: "リビングの掃除を手伝ってほしいです。"
+    - PK: trouble_all
+      SK: createdAt#2024-06-02T09:30:00Z#223e4567-e89b-12d3-a456-426614174001
+      user_id: user#user02
+      category: "買い物"
+      message: "スーパーで牛乳を買ってきてください。"
+  Comments:
+    - PK: trouble#123e4567-e89b-12d3-a456-426614174000
+      SK: createdAt#2024-06-01T13:00:00Z#cmt-001
+      user_id: user#user03
+      message: "明日なら手伝えます！"
+    - PK: trouble#223e4567-e89b-12d3-a456-426614174001
+      SK: createdAt#2024-06-02T10:00:00Z#cmt-002
+      user_id: user#user01
+      message: "帰り道に寄ります。"
+  Notifications:
+    - PK: notify#ntf-001
+      SK: user#user01
+      status: PENDING
+      message: "user03さんがあなたの投稿にコメントしました。"
+    - PK: notify#ntf-002
+      SK: user#user02
+      status: SENT
+      message: "user01さんがあなたの投稿にコメントしました。"
+  Stats:
+    - PK: metric#trouble_count
+      SK: trouble_all
+      count: 2
+    - PK: metric#comment_count
+      SK: trouble#123e4567-e89b-12d3-a456-426614174000
+      count: 1
+  RoleAccessTable:
+    - role_id: role_admin
+      is_super_user: true
+      allowed_operations:
+        - "GET /troubles"
+        - "POST /troubles"
+        - "GET /comments"
+        - "POST /comments"
+    - role_id: role_user
+      is_super_user: false
+      allowed_operations:
+        - "GET /troubles"
+        - "POST /comments" 

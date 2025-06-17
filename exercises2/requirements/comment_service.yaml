@@ -1,0 +1,30 @@
+service: コメントAPI
+type: api
+description: |
+  Troubleに対するコメントを追加・取得するAPI。
+  投稿後はDynamoDB Streamを通じて通知生成Lambdaが起動される。
+api:
+  endpoints:
+    - POST /comments
+    - GET /comments?trouble_id=xxx
+  auth_required: true
+authentication:
+  type: Cognito UserPool + Lambda Authorizer
+  usage: Authorization: Bearer <Cognito発行JWT>
+dynamodb:
+  table: Comments
+  item_format:
+    PK: trouble#<trouble_id>
+    SK: createdAt#<timestamp>#<comment_id>
+  stream_enabled: true
+  stream_target: notification_generator
+  attributes:
+    - user_id: user#<sub>
+    - message: string
+dependencies:
+  - shared_resources.yaml#dynamodb_tables.Comments
+  - shared_resources.yaml#secrets.COGNITO_USER_POOL_ID
+  - shared_resources.yaml#secrets.COGNITO_CLIENT_ID
+  - notification_generator.yaml
+notes: |
+  Cognito UserPool + Lambda AuthorizerによるJWT認証必須。API Gateway + Lambda + DynamoDB + Stream構成。 

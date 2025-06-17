@@ -1,0 +1,15 @@
+service: 投稿件数集計Lambda
+type: eventbridge_listener
+description: |
+  Troubles, CommentsのPutItemを検知し、Statsテーブルへ件数を集計。
+trigger:
+  type: EventBridge Rule
+  event: PutItem to Troubles/Comments
+output_table: Stats
+actions:
+  - trouble_id や category 単位の投稿数・コメント数をインクリメント記録
+dependencies:
+  - shared_resources.yaml#eventbridge_rules.PutItemEvent
+  - shared_resources.yaml#dynamodb_tables.Stats
+notes: |
+  投稿・コメントのPutItemイベントを集計。 
