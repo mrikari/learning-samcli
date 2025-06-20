@@ -1,0 +1,52 @@
+service: Auth Service
+provider: AWS Cognito + Lambda Authorizer
+
+description: |
+  ユーザー認証はCognito UserPoolで行い、PreTokenGeneration Lambdaでカスタムクレーム（role, username）を付与。
+  API GatewayではLambda Authorizer（Authorizer/app.py）がJWTを検証し、RoleAccessTableの権限に基づきAPIアクセスを制御する。
+
+components:
+  - Cognito UserPool
+  - PreTokenGeneration Lambda（Cognitoカスタムクレーム付与）
+  - Lambda Authorizer（API Gateway用）
+  - RoleAccessTable（DynamoDB）
+
+api:
+  authentication:
+    type: Cognito UserPool
+    userpool_name: ProtectedUserPool
+    client_name: ProtectedAppClient
+    pre_token_generation: PreTokenGeneration Lambda
+    custom_claims:
+      - username
+      - role
+  authorization:
+    type: Lambda Authorizer
+    function: LambdaTokenAuthorizer
+    logic:
+      - JWTのRS256署名・aud/iss検証（Cognito公開鍵利用）
+      - カスタムクレーム（role, username, sub）抽出
+      - RoleAccessTableから権限取得
+      - 許可されたAPIリソースのみAllow
+      - is_super_userなら全許可
+      - それ以外はallowed_operationsに基づき許可
+    dependencies:
+      - RoleAccessTable（DynamoDB）
+      - Cognito UserPool
+      - PreTokenGeneration Lambda
+
+usage:
+  - API呼び出し時は Authorization: Bearer <Cognito発行JWT> を付与
+  - JWTの有効期限・署名・aud/issはLambda Authorizerで検証
+  - API Gatewayの全エンドポイントでデフォルト認可
+
+dependencies:
+  - shared_resources.yaml#dynamodb_tables.RoleAccessTable
+  - shared_resources.yaml#secrets.COGNITO_USER_POOL_ID
+  - shared_resources.yaml#secrets.COGNITO_CLIENT_ID
+
+notes: |
+  - ユーザー作成・認証はCognito UserPoolで実施
+  - PreTokenGeneration Lambdaでrole, usernameをJWTに付与
+  - Lambda AuthorizerでAPIアクセス権限を動的制御
+  - RoleAccessTableでロールごとの許可APIを管理 

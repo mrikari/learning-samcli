@@ -1,0 +1,12 @@
+service: ダッシュボードAPI
+type: api
+description: |
+  投稿件数や通知件数を返却するダッシュボード用API。
+api:
+  endpoints:
+    - GET /stats
+input_table: Stats
+dependencies:
+  - shared_resources.yaml#dynamodb_tables.Stats
+notes: |
+  投稿・通知件数の集計値を返却。 

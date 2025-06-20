@@ -1,0 +1,17 @@
+service: 通知配信バッチ
+type: scheduled_lambda
+description: |
+  5分ごとに実行され、通知ステータスがPENDINGのものを処理。
+  通知完了後、status = SENT に更新。
+trigger:
+  type: EventBridge Schedule
+  schedule: rate(5 minutes)
+input_table: Notifications
+actions:
+  - 送信対象を抽出し配信処理
+  - 通知レコードを更新（SENT）
+dependencies:
+  - shared_resources.yaml#dynamodb_tables.Notifications
+  - shared_resources.yaml#secrets.WEBHOOK_URL
+notes: |
+  通知はバッチで配信される。 

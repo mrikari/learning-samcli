@@ -1,0 +1,646 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  exercises2
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 128
+    Runtime: python3.13
+    Environment:
+      Variables:
+        ALLOWED_ORIGINS: https://d18vsxzmqxtxeo.cloudfront.net
+
+Parameters:
+  TableName:
+    Type: String
+    Default: TroubleTable
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - stg
+      - prod
+    Description: Environment name
+
+  BucketNamePrefix:
+    Type: String
+    Default: lecture10
+    Description: Prefix for S3 bucket name
+
+  DefaultRootObject:
+    Type: String
+    Default: index.html
+    Description: Default root object for CloudFront distribution
+
+
+Resources:
+  PreTokenGenerationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: PreTokenGenerationFunction
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      CodeUri: services/Cognito/PreTokenGeneration/
+  PreTokenInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt PreTokenGenerationFunction.Arn
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPool}
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: ProtectedUserPool
+      LambdaConfig:
+        PreTokenGeneration: !GetAtt PreTokenGenerationFunction.Arn
+      AutoVerifiedAttributes:
+        - email
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: admin_only
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Schema:
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+          StringAttributeConstraints:
+            MinLength: "36"
+            MaxLength: "36"
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: ProtectedAppClient
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+  RoleAccessTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: RoleAccessTable
+      PrimaryKey:
+        Name: role_id
+        Type: String
+  TroublesServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: TroublesServiceApi
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'http://localhost:3000'"
+        MaxAge: "'3600'"
+      Auth:
+        Authorizers:
+          LambdaTokenAuthorizer:
+            FunctionArn: !GetAtt LambdaTokenAuthorizer.Arn
+        DefaultAuthorizer: LambdaTokenAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+  LambdaTokenAuthorizer:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: LambdaTokenAuthorizer
+      CodeUri: services/Authorizer/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
+      Events: {} # API Gateway 経由では呼ばれない
+  LambdaTokenAuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaTokenAuthorizer.Arn
+      Principal: apigateway.amazonaws.com
+
+  ### RoleService ###
+  ListRolesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ListRolesFunction
+      CodeUri: services/RoleService/ListRoles/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        GetRoles:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles
+            Method: GET
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  CreateRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CreateRoleFunction
+      CodeUri: services/RoleService/CreateRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        CreateRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles
+            Method: POST
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+        PutRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles
+            Method: PUT
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  UpdateRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: UpdateRoleFunction
+      CodeUri: services/RoleService/UpdateRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        UpdateRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles/{role_id}
+            Method: POST
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+        PatchRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles/{role_id}
+            Method: PATCH
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  GetRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GetRoleFunction
+      CodeUri: services/RoleService/GetRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        GetRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles/{role_id}
+            Method: GET
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  DeleteRoleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: DeleteRoleFunction
+      CodeUri: services/RoleService/DeleteRole/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+      Events:
+        DeleteRole:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TroublesServiceApi
+            Path: /roles/{role_id}
+            Method: DELETE
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+
+  ### UserService ###
+  ListUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ListUsersFunction
+      CodeUri: services/UserService/ListUsers/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        ListUsers:
+          Type: Api
+          Properties:
+            Path: /users
+            Method: get
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  CreateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CreateUserFunction
+      CodeUri: services/UserService/CreateUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminCreateUser
+                - cognito-idp:AdminSetUserPassword
+                - cognito-idp:AdminUpdateUserAttributes
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        CreateUser:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /users
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+        PutUser:
+          Type: Api
+          Properties:
+            Method: PUT
+            Path: /users
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  GetUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: GetUserFunction
+      CodeUri: services/UserService/GetUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        GetUser:
+          Type: Api
+          Properties:
+            Method: GET
+            Path: /users/{username}
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  UpdateUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: UpdateUserFunction
+      CodeUri: services/UserService/UpdateUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminUpdateUserAttributes
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        UpdateUser:
+          Type: Api
+          Properties:
+            Method: POST
+            Path: /users/{username}
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+        PatchUser:
+          Type: Api
+          Properties:
+            Method: PATCH
+            Path: /users/{username}
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  DeleteUserFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: DeleteUserFunction
+      CodeUri: services/UserService/DeleteUser/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminDeleteUser
+              Resource: "*"
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+      Events:
+        DeleteUser:
+          Type: Api
+          Properties:
+            Method: DELETE
+            Path: /users/{username}
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+
+  ### TroubleService ###
+  ListTroublesFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: services/TroubleService/ListTroubles
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Events:
+        ListTroubles:
+          Type: Api
+          Properties:
+            Path: /troubles
+            Method: get
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  CreateTroubleFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: services/TroubleService/CreateTrouble
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TableName
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+      Events:
+        ListTroubles:
+          Type: Api
+          Properties:
+            Path: /troubles
+            Method: post
+            RestApiId: !Ref TroublesServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  TroubleTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Ref TableName
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: item_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH # Partition key
+        - AttributeName: item_id
+          KeyType: RANGE # Sort key
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: service
+          Value: troubles
+
+  HookCreateTrouble:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TroubleService/hooks/CreateTrouble
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          LOG_GROUP_NAME: !Ref CheckTroubleCountLogGroup
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref TableName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+                - logs:DescribeLogStreams
+              Resource: "*"
+      Events:
+        DDBEvent:
+          Type: DynamoDB
+          Properties:
+            Stream:
+              !GetAtt TroubleTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            Enabled: true
+
+  CheckTroubleCount:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/TroubleService/hooks/CheckTroubleCount
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          LOG_GROUP_NAME: !Ref CheckTroubleCountLogGroup
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - logs:DescribeLogStreams
+                - logs:GetLogEvents
+              Resource: "*"
+      Events:
+        DailyTrigger:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 * * * ? *)  # 1時間ごとに起動
+
+  CheckTroubleCountLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-CheckTroubleCount"
+      RetentionInDays: 30
+
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/Authorizer/
+      Handler: app.lambda_handler
+      Architectures:
+        - x86_64
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoleAccessTable
+      Environment:
+        Variables:
+          ROLE_TABLE_NAME: !Ref RoleAccessTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPool
+          COGNITO_CLIENT_ID: !Ref CognitoUserPoolClient
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${BucketNamePrefix}-${Environment}-frontend
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${FrontendBucket}/*"
+
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "OAI for ${BucketNamePrefix}-${Environment}"
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "Distribution for ${BucketNamePrefix}-${Environment}"
+        DefaultRootObject: !Ref DefaultRootObject
+        Origins:
+          - DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+Outputs:
+  TroublesServiceApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${TroublesServiceApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  CognitoUserPoolId:
+    Description: "Cognito User Pool ID"
+    Value: !Ref CognitoUserPool
+  CognitoClientId:
+    Description: "Cognito Client ID"
+    Value: !Ref CognitoUserPoolClient
+
+  BucketName:
+    Description: Name of the S3 bucket
+    Value: !Ref FrontendBucket
+
+  CloudFrontDomainName:
+    Description: Domain name of the CloudFront distribution
+    Value: !GetAtt CloudFrontDistribution.DomainName
