@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: APIキーで制御する FIFO SQS 通知APIシステム
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: python3.13
+    Architectures: [x86_64]
+
+Resources:
+
+  NotifyQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: notify-queue.fifo
+      FifoQueue: true
+      ContentBasedDeduplication: false
+      ReceiveMessageWaitTimeSeconds: 20
+
+  NotifyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: notify/
+      Handler: app.handler
+      Environment:
+        Variables:
+          QUEUE_URL: !Ref NotifyQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt NotifyQueue.QueueName
+        - SQSPollerPolicy:
+            QueueName: !GetAtt NotifyQueue.QueueName
+      Events:
+        NotifyAPI:
+          Type: Api
+          Properties:
+            Path: /notify
+            Method: POST
+            RestApiId: !Ref NotifyApi
+            Auth:
+              ApiKeyRequired: true
+        PollAPI:
+          Type: Api
+          Properties:
+            Path: /poll
+            Method: GET
+            RestApiId: !Ref NotifyApi
+            Auth:
+              ApiKeyRequired: true
+
+  NotifyApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: NotifyApi
+      StageName: Prod
+
+  UsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn: NotifyApiProdStage
+    Properties:
+      UsagePlanName: NotifyUsagePlan
+      ApiStages:
+        - ApiId: !Ref NotifyApi
+          Stage: Prod
+      Throttle:
+        RateLimit: 10
+        BurstLimit: 2
+
+  NotifyApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn: NotifyApiProdStage
+    Properties:
+      Name: ClientApiKey
+      Enabled: true
+      StageKeys:
+        - RestApiId: !Ref NotifyApi
+          StageName: Prod
+
+  UsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    Properties:
+      KeyId: !Ref NotifyApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref UsagePlan
