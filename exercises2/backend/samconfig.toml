@@ -18,9 +18,8 @@ confirm_changeset = true
 resolve_s3 = true
 s3_prefix = "lecture10"
 region = "ap-northeast-1"
-parameter_overrides = "TableName=\"TroubleTable\""
+parameter_overrides = "TableName=\"TroubleTable\" Environment=\"dev\" BucketNamePrefix=\"lecture10\" DefaultRootObject=\"index.html\" AllowedOrigins=\"http://localhost:3000\""
 image_repositories = []
-stack_name = "lecture10"
 
 [default.package.parameters]
 resolve_s3 = true
