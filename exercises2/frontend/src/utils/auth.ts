@@ -6,7 +6,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 import { getToken, setToken, removeToken } from './storage';
 import { CognitoUser, AuthenticationDetails, CognitoUserSession } from 'amazon-cognito-identity-js';
-import UserPool from '@/lib/cognito';
+import UserPool from '@/libs/cognito';
 
 export const login = async (username: string, password: string) => {
   try {
