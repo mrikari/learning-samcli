@@ -10,7 +10,7 @@ Globals:
     Runtime: python3.13
     Environment:
       Variables:
-        ALLOWED_ORIGINS: https://d18vsxzmqxtxeo.cloudfront.net
+        ALLOWED_ORIGINS: "*"
 
 Parameters:
   TableName:
@@ -35,6 +35,11 @@ Parameters:
     Type: String
     Default: index.html
     Description: Default root object for CloudFront distribution
+
+  AllowedOrigins:
+    Type: String
+    Default: http://localhost:3000
+    Description: Allowed origins for CORS (comma-separated for multiple origins)
 
 
 Resources:
@@ -97,7 +102,24 @@ Resources:
       Cors:
         AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
         AllowHeaders: "'Content-Type,Authorization'"
-        AllowOrigin: "'http://localhost:3000'"
+        AllowOrigin: "'*'"
+        MaxAge: "'3600'"
+
+      Auth:
+        Authorizers:
+          LambdaTokenAuthorizer:
+            FunctionArn: !GetAtt LambdaTokenAuthorizer.Arn
+        DefaultAuthorizer: LambdaTokenAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+  CommentsServiceApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: CommentsServiceApi
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
         MaxAge: "'3600'"
       Auth:
         Authorizers:
@@ -589,6 +611,31 @@ Resources:
       CloudFrontOriginAccessIdentityConfig:
         Comment: !Sub "OAI for ${BucketNamePrefix}-${Environment}"
 
+  CloudFrontFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${AWS::StackName}-url-rewrite"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+            var request = event.request;
+            var uri = request.uri;
+            
+            // Check whether the URI is missing a file name.
+            if (uri.endsWith('/')) {
+                request.uri += 'index.html';
+            } 
+            // Check whether the URI is missing a file extension.
+            else if (!uri.includes('.')) {
+                request.uri += '.html';
+            }
+            
+            return request;
+        }
+      FunctionConfig:
+        Comment: "Default directory indexes in Amazon S3-backed Amazon CloudFront origins"
+        Runtime: cloudfront-js-1.0
+
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -616,6 +663,11 @@ Resources:
             QueryString: false
             Cookies:
               Forward: none
+            Headers:
+              - Origin
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt CloudFrontFunction.FunctionARN
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200
@@ -625,11 +677,69 @@ Resources:
             ResponsePagePath: /index.html
         ViewerCertificate:
           CloudFrontDefaultCertificate: true
-
+  CommentsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: services/CommentsService/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: CommentsTable
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: CommentsTable
+      Events:
+        GetComments:
+          Type: Api
+          Properties:
+            Path: /comments
+            Method: get
+            RestApiId:
+              Ref: CommentsServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+        PostComments:
+          Type: Api
+          Properties:
+            Path: /comments
+            Method: post
+            RestApiId:
+              Ref: CommentsServiceApi
+            Auth:
+              Authorizer: LambdaTokenAuthorizer
+  CommentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Comments
+      BillingMode: PROVISIONED
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      AttributeDefinitions:
+      - AttributeName: PK
+        AttributeType: S
+      - AttributeName: SK
+        AttributeType: S
+      KeySchema:
+      - AttributeName: PK
+        KeyType: HASH
+      - AttributeName: SK
+        KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+      - Key: service
+        Value: commnets
 Outputs:
   TroublesServiceApiEndpoint:
     Description: "API Gateway endpoint URL"
     Value: !Sub "https://${TroublesServiceApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+  CommentsServiceApiEndpoint:
+    Description: "Comments API Gateway endpoint URL"
+    Value: !Sub "https://${CommentsServiceApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
   CognitoUserPoolId:
     Description: "Cognito User Pool ID"
     Value: !Ref CognitoUserPool

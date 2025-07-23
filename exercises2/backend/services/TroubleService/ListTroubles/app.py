@@ -4,13 +4,16 @@ import boto3
 from boto3.dynamodb.conditions import Key
 dynamoDB = boto3.resource("dynamodb")
 table = dynamoDB.Table(name=os.getenv("TABLE_NAME"))
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*")
 
 def generate_response(status_code, body):
     return {
         "statusCode": status_code,
         "body": json.dumps(body),
         "headers": {
-            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Origin': allowed_origins,
+            'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+            'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
         },
     }
 
@@ -18,6 +21,9 @@ def handle_exception(e):
     return generate_response(500, {"message": "サーバー内部エラー", "error": str(e)})
 
 def lambda_handler(event, context):
+    if "OPTIONS" == event["httpMethod"]:
+        return generate_response(200, {"message": "CORS preflight response"})
+        
     query_params = event.get("queryStringParameters") or {}
     next_token = query_params.get("nextToken")
 
